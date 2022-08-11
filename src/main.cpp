@@ -1,0 +1,339 @@
+/**
+  ESP32 security monitor firmware for the Open eXtensible Rack System
+
+  Documentation:  
+    https://oxrs.io/docs/firmware/security-monitor-esp32.html
+
+  GitHub repository:
+    https://github.com/austinscreations/OXRS-AC-SecurityMonitor-ESP32-FW
+
+  Copyright 2022 Austins Creations
+*/
+
+/*--------------------------- Libraries -------------------------------*/
+#include <Arduino.h>
+#include <Adafruit_MCP23X17.h>        // For MCP23017 I/O buffers
+#include <OXRS_Rack32.h>              // Rack32 support
+#include <OXRS_Input.h>               // For input handling
+#include "logo.h"                     // Embedded maker logo
+
+/*--------------------------- Constants -------------------------------*/
+// Serial
+#define       SERIAL_BAUD_RATE      115200
+
+// Can have up to 8x MCP23017s on a single I2C bus
+const byte    MCP_I2C_ADDRESS[]     = { 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27 };
+const uint8_t MCP_COUNT             = sizeof(MCP_I2C_ADDRESS);
+
+// Each MCP23017 has 16 I/O pins, or 4 RJ45 ports (i.e. 4 pins per port)
+#define       MCP_PIN_COUNT         16
+#define       MCP_PORT_COUNT        4
+
+// Set false for breakout boards with external pull-ups
+#define       MCP_INTERNAL_PULLUPS  true
+
+// Speed up the I2C bus to get faster event handling
+#define       I2C_CLOCK_SPEED       400000L
+
+/*--------------------------- Global Variables ------------------------*/
+// Each bit corresponds to an MCP found on the IC2 bus
+uint8_t g_mcps_found = 0;
+
+/*--------------------------- Instantiate Globals ---------------------*/
+// Rack32 handler
+OXRS_Rack32 rack32(FW_LOGO);
+
+// I/O buffers
+Adafruit_MCP23X17 mcp23017[MCP_COUNT];
+
+// Input handlers
+OXRS_Input oxrsInput[MCP_COUNT];
+
+/*--------------------------- Program ---------------------------------*/
+uint8_t getMaxPort()
+{
+  // Count how many MCPs were found
+  uint8_t mcpCount = 0;
+  for (uint8_t mcp = 0; mcp < MCP_COUNT; mcp++)
+  {
+    if (bitRead(g_mcps_found, mcp) != 0) { mcpCount++; }
+  }
+
+  // Remember our indexes are 1-based
+  return mcpCount * MCP_PORT_COUNT;  
+}
+
+void getEventType(char eventType[], uint8_t state)
+{
+  // Determine what event we need to publish
+  sprintf_P(eventType, PSTR("error"));
+  switch (state)
+  {
+    case HIGH_EVENT:
+      sprintf_P(eventType, PSTR("normal"));
+      break;
+    case LOW_EVENT:
+      sprintf_P(eventType, PSTR("alarm"));
+      break;
+    case TAMPER_EVENT:
+      sprintf_P(eventType, PSTR("tamper"));
+      break;
+    case SHORT_EVENT:
+      sprintf_P(eventType, PSTR("short"));
+      break;
+    case FAULT_EVENT:
+      sprintf_P(eventType, PSTR("fault"));
+      break;
+  }
+}
+
+void setPortInvert(uint8_t port, int invert)
+{
+  // Work out the MCP we are configuring
+  int mcp = (port - 1) / MCP_PORT_COUNT;
+
+  // Work out the pins we need to configure for each port
+  int fromPin = (port - 1) * (MCP_PIN_COUNT / MCP_PORT_COUNT);
+
+  for (uint8_t pin = fromPin; pin < fromPin + 4; pin++)
+  {
+    // Configure the display
+    rack32.setDisplayPinInvert(mcp, pin, invert);
+
+    // Pass this update to the input handler
+    oxrsInput[mcp].setInvert(pin, invert);
+  }
+}
+
+void setPortDisabled(uint8_t port, int disabled)
+{
+  // Work out the MCP we are configuring
+  int mcp = (port - 1) / MCP_PORT_COUNT;
+
+  // Work out the pins we need to configure for each port
+  int fromPin = (port - 1) * (MCP_PIN_COUNT / MCP_PORT_COUNT);
+
+  for (uint8_t pin = fromPin; pin < fromPin + 4; pin++)
+  {
+    // Configure the display
+    rack32.setDisplayPinDisabled(mcp, pin, disabled);
+
+    // Pass this update to the input handler
+    oxrsInput[mcp].setDisabled(pin, disabled);
+  }
+}
+
+/**
+  Config handler
+ */
+void setConfigSchema()
+{
+  // Define our config schema
+  StaticJsonDocument<1024> json;
+
+  JsonObject ports = json.createNestedObject("ports");
+  ports["title"] = "Port Configuration";
+  ports["description"] = "Add configuration for each port in use on your device. The 1-based index specifies which port you wish to configure. Inverting a port swaps the 'active' state. Disabling a port stops any events being emitted.";
+  ports["type"] = "array";
+  
+  JsonObject items = ports.createNestedObject("items");
+  items["type"] = "object";
+
+  JsonObject properties = items.createNestedObject("properties");
+
+  JsonObject port = properties.createNestedObject("port");
+  port["title"] = "Port";
+  port["type"] = "integer";
+  port["minimum"] = 1;
+  port["maximum"] = getMaxPort();
+
+  JsonObject invert = properties.createNestedObject("invert");
+  invert["title"] = "Invert";
+  invert["type"] = "boolean";
+
+  JsonObject disabled = properties.createNestedObject("disabled");
+  disabled["title"] = "Disabled";
+  disabled["type"] = "boolean";
+
+  JsonArray required = items.createNestedArray("required");
+  required.add("port");
+
+  // Pass our config schema down to the Rack32 library
+  rack32.setConfigSchema(json.as<JsonVariant>());
+}
+
+uint8_t getPort(JsonVariant json)
+{
+  if (!json.containsKey("port"))
+  {
+    rack32.println(F("[secm] missing port"));
+    return 0;
+  }
+  
+  uint8_t port = json["port"].as<uint8_t>();
+
+  // Check the port is valid for this device
+  if (port <= 0 || port > getMaxPort())
+  {
+    rack32.println(F("[secm] invalid port"));
+    return 0;
+  }
+
+  return port;
+}
+
+void jsonPortConfig(JsonVariant json)
+{
+  uint8_t port = getPort(json);
+  if (port == 0) return;
+
+  if (json.containsKey("invert"))
+  {
+    setPortInvert(port, json["invert"].as<bool>());
+  }
+
+  if (json.containsKey("disabled"))
+  {
+    setPortDisabled(port, json["disabled"].as<bool>());
+  }
+}
+
+void jsonConfig(JsonVariant json)
+{
+  if (json.containsKey("ports"))
+  {
+    for (JsonVariant port : json["ports"].as<JsonArray>())
+    {
+      jsonPortConfig(port);    
+    }
+  }
+}
+
+void publishEvent(uint8_t port, uint8_t state)
+{
+  char eventType[7];
+  getEventType(eventType, state);
+
+  StaticJsonDocument<128> json;
+  json["port"] = port;
+  json["type"] = "security";
+  json["event"] = eventType;
+
+  if (!rack32.publishStatus(json.as<JsonVariant>()))
+  {
+    rack32.print(F("[secm] [failover] "));
+    serializeJson(json, rack32);
+    rack32.println();
+
+    // TODO: add failover handling code here
+  }
+}
+
+/**
+  Event handlers
+*/
+void inputEvent(uint8_t id, uint8_t input, uint8_t type, uint8_t state)
+{
+  // Determine the port (1-based) for this input event
+  // NOTE: the event is always generated on the last input (of 4) for each port
+  uint8_t mcp = id;
+  uint8_t mcpPort = (input + 1) / (MCP_PIN_COUNT / MCP_PORT_COUNT);
+  uint8_t port = (MCP_PORT_COUNT * mcp) + mcpPort;
+
+  // Publish the event
+  publishEvent(port, state);
+}
+
+/**
+  I2C
+*/
+void scanI2CBus()
+{
+  rack32.println(F("[secm] scanning for I/O buffers..."));
+
+  for (uint8_t mcp = 0; mcp < MCP_COUNT; mcp++)
+  {
+    rack32.print(F(" - 0x"));
+    rack32.print(MCP_I2C_ADDRESS[mcp], HEX);
+    rack32.print(F("..."));
+
+    // Check if there is anything responding on this address
+    Wire.beginTransmission(MCP_I2C_ADDRESS[mcp]);
+    if (Wire.endTransmission() == 0)
+    {
+      bitWrite(g_mcps_found, mcp, 1);
+      
+      // If an MCP23017 was found then initialise and configure the inputs
+      mcp23017[mcp].begin_I2C(MCP_I2C_ADDRESS[mcp]);
+      for (uint8_t pin = 0; pin < MCP_PIN_COUNT; pin++)
+      {
+        mcp23017[mcp].pinMode(pin, MCP_INTERNAL_PULLUPS ? INPUT_PULLUP : INPUT);
+      }
+
+      // Initialise input handlers as type SECURITY (locked to this type)
+      oxrsInput[mcp].begin(inputEvent, SECURITY);
+
+      rack32.print(F("MCP23017"));
+      if (MCP_INTERNAL_PULLUPS) { rack32.print(F(" (internal pullups)")); }
+      rack32.println();
+    }
+    else
+    {
+      rack32.println(F("empty"));
+    }
+  }
+}
+
+/**
+  Setup
+*/
+void setup()
+{
+  // Start serial and let settle
+  Serial.begin(SERIAL_BAUD_RATE);
+  delay(1000);
+  Serial.println(F("[secm] starting up..."));
+
+  // Start the I2C bus
+  Wire.begin();
+
+  // Scan the I2C bus and set up I/O buffers
+  scanI2CBus();
+
+  // Start Rack32 hardware
+  rack32.begin(jsonConfig, NULL);
+
+  // Set up port display
+  rack32.setDisplayPortLayout(g_mcps_found, PORT_LAYOUT_INPUT_AUTO);
+
+  // Set up config schema (for self-discovery and adoption)
+  setConfigSchema();
+  
+  // Speed up I2C clock for faster scan rate (after bus scan)
+  Wire.setClock(I2C_CLOCK_SPEED);
+}
+
+/**
+  Main processing loop
+*/
+void loop()
+{
+  // Let Rack32 hardware handle any events etc
+  rack32.loop();
+
+  // Iterate through each of the MCP23017s
+  for (uint8_t mcp = 0; mcp < MCP_COUNT; mcp++)
+  {
+    if (bitRead(g_mcps_found, mcp) == 0)
+      continue;
+
+    // Read the values for all 16 pins on this MCP
+    uint16_t io_value = mcp23017[mcp].readGPIOAB();
+
+    // Show port animations
+    rack32.updateDisplayPorts(mcp, io_value);
+
+    // Check for any input events
+    oxrsInput[mcp].process(mcp, io_value);
+  }
+}
