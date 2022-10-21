@@ -123,6 +123,24 @@ void setPortDisabled(uint8_t port, int disabled)
   }
 }
 
+void setDisplay()
+{
+  // Display ports based on what MCPs were detected
+  rack32.setDisplayPortLayout(g_mcps_found, PORT_LAYOUT_INPUT_AUTO);
+
+  // Setup every port as type SECURITY
+  for (uint8_t mcp = 0; mcp < MCP_COUNT; mcp++)
+  {
+    if (bitRead(g_mcps_found, mcp) == 0)
+      continue;
+
+    for (uint8_t pin = 0; pin < MCP_PIN_COUNT; pin++)
+    {
+      rack32.setDisplayPinType(mcp, pin, PIN_TYPE_SECURITY);
+    }
+  }
+}
+
 /**
   Config handler
  */
@@ -303,8 +321,8 @@ void setup()
   // Start Rack32 hardware
   rack32.begin(jsonConfig, NULL);
 
-  // Set up port display
-  rack32.setDisplayPortLayout(g_mcps_found, PORT_LAYOUT_INPUT_AUTO);
+  // Set up display for all security ports
+  setDisplay();
 
   // Set up config schema (for self-discovery and adoption)
   setConfigSchema();
