@@ -252,7 +252,7 @@ void publishEvent(uint8_t port, uint8_t state)
   if (!oxrs.publishStatus(json.as<JsonVariant>()))
   {
     oxrs.print(F("[secm] [failover] "));
-    serializeJson(json, rack32);
+    serializeJson(json, oxrs);
     oxrs.println();
 
     // TODO: add failover handling code here
