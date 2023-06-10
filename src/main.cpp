@@ -91,14 +91,27 @@ void getEventType(char eventType[], uint8_t state)
   }
 }
 
+uint8_t getMcp(uint8_t port)
+{
+  // Work out the MCP for this port (MCP is 0-based, port is 1-based)
+  return (port - 1) / MCP_PORT_COUNT;
+}
+
+uint8_t getFromPin(uint8_t port)
+{
+  // Work out the index for the first pin on this port (port is 1-based)
+  int index = (port - 1) * (MCP_PIN_COUNT / MCP_PORT_COUNT);
+
+  // Work out the first pin for this port (pin is 0-based)
+  return index % MCP_PIN_COUNT;
+}
+
 void setPortInvert(uint8_t port, int invert)
 {
-  // Work out the MCP we are configuring
-  int mcp = (port - 1) / MCP_PORT_COUNT;
-
-  // Work out the pins we need to configure for each port
-  int fromPin = (port - 1) * (MCP_PIN_COUNT / MCP_PORT_COUNT);
-
+  // Work out the MCP + pins we are configuring
+  uint8_t mcp = getMcp(port);
+  uint8_t fromPin = getFromPin(port);
+  
   for (uint8_t pin = fromPin; pin < fromPin + 4; pin++)
   {
     // Configure the display
@@ -113,12 +126,10 @@ void setPortInvert(uint8_t port, int invert)
 
 void setPortDisabled(uint8_t port, int disabled)
 {
-  // Work out the MCP we are configuring
-  int mcp = (port - 1) / MCP_PORT_COUNT;
-
-  // Work out the pins we need to configure for each port
-  int fromPin = (port - 1) * (MCP_PIN_COUNT / MCP_PORT_COUNT);
-
+  // Work out the MCP + pins we are configuring
+  uint8_t mcp = getMcp(port);
+  uint8_t fromPin = getFromPin(port);
+  
   for (uint8_t pin = fromPin; pin < fromPin + 4; pin++)
   {
     // Configure the display
