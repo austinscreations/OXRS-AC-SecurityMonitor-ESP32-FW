@@ -315,10 +315,12 @@ void publishEvent(uint8_t port, uint8_t state)
 
 void publishHassDiscovery(uint8_t mcp)
 {
-  char name[16];
+  char component[32];
   char id[32];
-  char valueTemplate[128];
   char topic[64];
+
+  char name[16];
+  char valueTemplate[128];
 
   uint8_t startPort = (mcp * MCP_PORT_COUNT) + 1;
   uint8_t endPort = startPort + MCP_PORT_COUNT;
@@ -333,8 +335,9 @@ void publishHassDiscovery(uint8_t mcp)
     DynamicJsonDocument json(1024);
 
     // Build the discovery topic
+    sprintf_P(component, PSTR("binary_sensor"));
     sprintf_P(id, PSTR("port_%d"), port);
-    oxrs.getHassDiscoveryTopic(topic, "binary_sensor", id);
+    oxrs.getHassDiscoveryTopic(topic, component, id);
 
     // Check one input for this port (they will ALL be disabled if the port is disabled)
     if (!oxrsInput[mcp].getDisabled(getFromPin(port)))
@@ -342,7 +345,7 @@ void publishHassDiscovery(uint8_t mcp)
       sprintf_P(name, PSTR("Port %d"), port);
       oxrs.getHassDiscoveryJson(json, name, id);
 
-      sprintf_P(valueTemplate, PSTR("{% if value_json.port == %d %}{% if value_json.event == 'alarm' %}ON{% else %}OFF{% endif %}{% endif %}"), port);
+      sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
       json["val_tpl"] = valueTemplate;
     }
 
