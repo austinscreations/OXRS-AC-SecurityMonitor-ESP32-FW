@@ -334,16 +334,17 @@ void publishHassDiscovery(uint8_t mcp)
     // JSON config payload (empty if the port is disabled, to clear any existing config)
     DynamicJsonDocument json(1024);
 
-    // Build the discovery topic
-    sprintf_P(component, PSTR("binary_sensor"));
     sprintf_P(id, PSTR("port_%d"), port);
-    oxrs.getHassDiscoveryTopic(topic, component, id);
+    sprintf_P(component, PSTR("binary_sensor"));
+    oxrs.getHassDiscoveryTopic(topic, id, component);
 
     // Check one input for this port (they will ALL be disabled if the port is disabled)
     if (!oxrsInput[mcp].getDisabled(getFromPin(port)))
     {
+      oxrs.getHassDiscoveryJson(json, id);
+
       sprintf_P(name, PSTR("Port %d"), port);
-      oxrs.getHassDiscoveryJson(json, name, id);
+      json["name"] = name;
 
       sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
       json["val_tpl"] = valueTemplate;
