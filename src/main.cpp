@@ -242,7 +242,7 @@ void jsonPortConfig(JsonVariant json)
   if (json.containsKey("disabled"))
   {
     setPortDisabled(port, json["disabled"].as<bool>());
-    g_hassDiscoveryPublished[port] = false;
+    g_hassDiscoveryPublished[port - 1] = false;
   }
 }
 
@@ -318,7 +318,7 @@ void publishHassDiscovery(uint8_t mcp)
   for (uint8_t port = startPort; port < endPort; port++)
   {
     // Ignore if we have already published the discovery config for this port
-    if (g_hassDiscoveryPublished[port])
+    if (g_hassDiscoveryPublished[port - 1])
       continue;
 
     // JSON config payload (empty if the port is disabled, to clear any existing config)
@@ -337,7 +337,7 @@ void publishHassDiscovery(uint8_t mcp)
     }
 
     // Publish retained and stop trying once successful 
-    g_hassDiscoveryPublished[port] = oxrs.publishHassDiscovery(json, component, portId);
+    g_hassDiscoveryPublished[port - 1] = oxrs.publishHassDiscovery(json, component, portId);
   }
 }
 
@@ -456,7 +456,7 @@ void loop()
     {
       publishHassDiscovery(mcp);
     }
-    
+
     // Check if we are querying the current values
     if (g_queryInputs)
     {
