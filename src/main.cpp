@@ -46,6 +46,9 @@ const uint8_t MCP_COUNT             = sizeof(MCP_I2C_ADDRESS);
 // Each bit corresponds to an MCP found on the IC2 bus
 uint8_t g_mcps_found = 0;
 
+// Publish Home Assistant self-discovery config for each port
+bool g_hassDiscoveryPublished[MCP_COUNT * MCP_PORT_COUNT];
+
 // Query current value of all bi-stable inputs
 bool g_queryInputs = false;
 
@@ -239,6 +242,7 @@ void jsonPortConfig(JsonVariant json)
   if (json.containsKey("disabled"))
   {
     setPortDisabled(port, json["disabled"].as<bool>());
+    g_hassDiscoveryPublished[port - 1] = false;
   }
 }
 
@@ -248,7 +252,7 @@ void jsonConfig(JsonVariant json)
   {
     for (JsonVariant port : json["ports"].as<JsonArray>())
     {
-      jsonPortConfig(port);    
+      jsonPortConfig(port);
     }
   }
 }
@@ -295,6 +299,45 @@ void publishEvent(uint8_t port, uint8_t state)
     oxrs.println();
 
     // TODO: add failover handling code here
+  }
+}
+
+void publishHassDiscovery(uint8_t mcp)
+{
+  // All security sensors are configured as binary_sensor
+  char component[16];
+  sprintf_P(component, PSTR("binary_sensor"));
+
+  char portId[32];
+  char portName[16];
+  char valueTemplate[128];
+
+  uint8_t startPort = (mcp * MCP_PORT_COUNT) + 1;
+  uint8_t endPort = startPort + MCP_PORT_COUNT;
+
+  for (uint8_t port = startPort; port < endPort; port++)
+  {
+    // Ignore if we have already published the discovery config for this port
+    if (g_hassDiscoveryPublished[port - 1])
+      continue;
+
+    // JSON config payload (empty if the port is disabled, to clear any existing config)
+    DynamicJsonDocument json(1024);
+
+    sprintf_P(portId, PSTR("port_%d"), port);
+    sprintf_P(portName, PSTR("Port %d"), port);
+
+    // Check one input for this port (they will ALL be disabled if the port is disabled)
+    if (!oxrsInput[mcp].getDisabled(getFromPin(port)))
+    {
+      oxrs.getHassDiscoveryJson(json, portId, portName);
+
+      sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
+      json["val_tpl"] = valueTemplate;
+    }
+
+    // Publish retained and stop trying once successful 
+    g_hassDiscoveryPublished[port - 1] = oxrs.publishHassDiscovery(json, component, portId);
   }
 }
 
@@ -407,6 +450,12 @@ void loop()
 
     // Check for any input events
     oxrsInput[mcp].process(mcp, io_value);
+
+    // Check if we need to publish any Home Assistant discovery payloads
+    if (oxrs.isHassDiscoveryEnabled())
+    {
+      publishHassDiscovery(mcp);
+    }
 
     // Check if we are querying the current values
     if (g_queryInputs)
