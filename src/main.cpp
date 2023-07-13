@@ -237,6 +237,7 @@ void jsonPortConfig(JsonVariant json)
   if (json.containsKey("invert"))
   {
     setPortInvert(port, json["invert"].as<bool>());
+    g_hassDiscoveryPublished[port - 1] = false;
   }
 
   if (json.containsKey("disabled"))
@@ -451,16 +452,16 @@ void loop()
     // Check for any input events
     oxrsInput[mcp].process(mcp, io_value);
 
-    // Check if we need to publish any Home Assistant discovery payloads
-    if (oxrs.isHassDiscoveryEnabled())
-    {
-      publishHassDiscovery(mcp);
-    }
-
     // Check if we are querying the current values
     if (g_queryInputs)
     {
       oxrsInput[mcp].queryAll(mcp);
+    }
+
+    // Check if we need to publish any Home Assistant discovery payloads
+    if (oxrs.isHassDiscoveryEnabled())
+    {
+      publishHassDiscovery(mcp);
     }
   }
 
