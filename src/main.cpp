@@ -326,12 +326,14 @@ void publishHassDiscovery(uint8_t mcp)
     DynamicJsonDocument json(1024);
 
     sprintf_P(portId, PSTR("port_%d"), port);
-    sprintf_P(portName, PSTR("Port %d"), port);
 
     // Check one input for this port (they will ALL be disabled if the port is disabled)
     if (!oxrsInput[mcp].getDisabled(getFromPin(port)))
     {
-      oxrs.getHassDiscoveryJson(json, portId, portName);
+      oxrs.getHassDiscoveryJson(json, portId);
+
+      sprintf_P(portName, PSTR("Port %d"), port);
+      json["name"] = portName;
 
       sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
       json["val_tpl"] = valueTemplate;
