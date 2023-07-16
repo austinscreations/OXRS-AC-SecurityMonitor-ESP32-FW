@@ -46,11 +46,11 @@ const uint8_t MCP_COUNT             = sizeof(MCP_I2C_ADDRESS);
 // Each bit corresponds to an MCP found on the IC2 bus
 uint8_t g_mcps_found = 0;
 
-// Publish Home Assistant self-discovery config for each port
-bool g_hassDiscoveryPublished[MCP_COUNT * MCP_PORT_COUNT];
-
 // Query current value of all bi-stable inputs
 bool g_queryInputs = false;
+
+// Publish Home Assistant self-discovery config for each port
+bool g_hassDiscoveryPublished[MCP_COUNT * MCP_PORT_COUNT];
 
 /*--------------------------- Instantiate Globals ---------------------*/
 // I/O buffers
@@ -335,10 +335,10 @@ void publishHassDiscovery(uint8_t mcp)
       oxrs.getHassDiscoveryJson(json, portId);
 
       sprintf_P(portName, PSTR("Port %d"), port);
-      json["name"] = portName;
-
-      json["stat_t"] = oxrs.getMQTT()->getStatusTopic(statusTopic);
       sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
+
+      json["name"] = portName;
+      json["stat_t"] = oxrs.getMQTT()->getStatusTopic(statusTopic);
       json["val_tpl"] = valueTemplate;
     }
 
