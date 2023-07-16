@@ -46,11 +46,11 @@ const uint8_t MCP_COUNT             = sizeof(MCP_I2C_ADDRESS);
 // Each bit corresponds to an MCP found on the IC2 bus
 uint8_t g_mcps_found = 0;
 
-// Publish Home Assistant self-discovery config for each port
-bool g_hassDiscoveryPublished[MCP_COUNT * MCP_PORT_COUNT];
-
 // Query current value of all bi-stable inputs
 bool g_queryInputs = false;
+
+// Publish Home Assistant self-discovery config for each port
+bool g_hassDiscoveryPublished[MCP_COUNT * MCP_PORT_COUNT];
 
 /*--------------------------- Instantiate Globals ---------------------*/
 // I/O buffers
@@ -122,7 +122,7 @@ void setPortInvert(uint8_t port, int invert)
   {
     // Configure the display
     #if defined(OXRS_RACK32)
-    oxrs.setDisplayPinInvert(mcp, pin, invert);
+    oxrs.getLCD()->setPinInvert(mcp, pin, invert);
     #endif
 
     // Pass this update to the input handler
@@ -140,7 +140,7 @@ void setPortDisabled(uint8_t port, int disabled)
   {
     // Configure the display
     #if defined(OXRS_RACK32)
-    oxrs.setDisplayPinDisabled(mcp, pin, disabled);
+    oxrs.getLCD()->setPinDisabled(mcp, pin, disabled);
     #endif
 
     // Pass this update to the input handler
@@ -152,7 +152,7 @@ void setDisplay()
 {
   // Display ports based on what MCPs were detected
   #if defined(OXRS_RACK32)
-  oxrs.setDisplayPortLayout(g_mcps_found, PORT_LAYOUT_INPUT_AUTO);
+  oxrs.getLCD()->drawPorts(PORT_LAYOUT_INPUT_AUTO, g_mcps_found);
   #endif
 
   // Setup every port as type SECURITY
@@ -164,7 +164,7 @@ void setDisplay()
     for (uint8_t pin = 0; pin < MCP_PIN_COUNT; pin++)
     {
       #if defined(OXRS_RACK32)
-      oxrs.setDisplayPinType(mcp, pin, PIN_TYPE_SECURITY);
+      oxrs.getLCD()->setPinType(mcp, pin, PIN_TYPE_SECURITY);
       #endif
     }
   }
@@ -311,6 +311,8 @@ void publishHassDiscovery(uint8_t mcp)
 
   char portId[32];
   char portName[16];
+
+  char statusTopic[64];
   char valueTemplate[128];
 
   uint8_t startPort = (mcp * MCP_PORT_COUNT) + 1;
@@ -333,9 +335,10 @@ void publishHassDiscovery(uint8_t mcp)
       oxrs.getHassDiscoveryJson(json, portId);
 
       sprintf_P(portName, PSTR("Port %d"), port);
-      json["name"] = portName;
-
       sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
+
+      json["name"] = portName;
+      json["stat_t"] = oxrs.getMQTT()->getStatusTopic(statusTopic);
       json["val_tpl"] = valueTemplate;
     }
 
@@ -448,7 +451,7 @@ void loop()
 
     // Show port animations
     #if defined(OXRS_RACK32)
-    oxrs.updateDisplayPorts(mcp, io_value);
+    oxrs.getLCD()->process(mcp, io_value);
     #endif
 
     // Check for any input events
