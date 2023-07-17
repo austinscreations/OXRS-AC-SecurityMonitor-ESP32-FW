@@ -14,6 +14,7 @@
 #include <Arduino.h>
 #include <Adafruit_MCP23X17.h>        // For MCP23017 I/O buffers
 #include <OXRS_Input.h>               // For input handling
+#include <OXRS_HASS.h>                // For Home Assistant self-discovery
 
 #if defined(OXRS_RACK32)
 #include <OXRS_Rack32.h>              // Rack32 support
@@ -58,6 +59,9 @@ Adafruit_MCP23X17 mcp23017[MCP_COUNT];
 
 // Input handlers
 OXRS_Input oxrsInput[MCP_COUNT];
+
+// Home Assistant self-discovery
+OXRS_HASS hass(oxrs.getMQTT());
 
 /*--------------------------- Program ---------------------------------*/
 uint8_t getMaxPort()
@@ -205,6 +209,9 @@ void setConfigSchema()
   JsonArray required = items.createNestedArray("required");
   required.add("port");
 
+  // Add any Home Assistant config
+  hass.setConfigSchema(json);
+
   // Pass our config schema down to the hardware library
   oxrs.setConfigSchema(json.as<JsonVariant>());
 }
@@ -256,6 +263,9 @@ void jsonConfig(JsonVariant json)
       jsonPortConfig(port);
     }
   }
+
+  // Handle any Home Assistant config
+  hass.parseConfig(json);
 }
 
 /**
@@ -332,7 +342,7 @@ void publishHassDiscovery(uint8_t mcp)
     // Check one input for this port (they will ALL be disabled if the port is disabled)
     if (!oxrsInput[mcp].getDisabled(getFromPin(port)))
     {
-      oxrs.getHassDiscoveryJson(json, portId);
+      hass.getDiscoveryJson(json, portId);
 
       sprintf_P(portName, PSTR("Port %d"), port);
       sprintf_P(valueTemplate, PSTR("{%% if value_json.port == %d %%}{%% if value_json.event == 'alarm' %%}ON{%% else %%}OFF{%% endif %%}{%% endif %%}"), port);
@@ -343,7 +353,7 @@ void publishHassDiscovery(uint8_t mcp)
     }
 
     // Publish retained and stop trying once successful 
-    g_hassDiscoveryPublished[port - 1] = oxrs.publishHassDiscovery(json, component, portId);
+    g_hassDiscoveryPublished[port - 1] = hass.publishDiscoveryJson(json, component, portId);
   }
 }
 
@@ -464,7 +474,7 @@ void loop()
     }
 
     // Check if we need to publish any Home Assistant discovery payloads
-    if (oxrs.isHassDiscoveryEnabled())
+    if (hass.isDiscoveryEnabled())
     {
       publishHassDiscovery(mcp);
     }
