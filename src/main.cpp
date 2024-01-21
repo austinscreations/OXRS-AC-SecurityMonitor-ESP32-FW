@@ -180,33 +180,33 @@ void setDisplay()
 void setConfigSchema()
 {
   // Define our config schema
-  StaticJsonDocument<1024> json;
+  JsonDocument json;
 
-  JsonObject ports = json.createNestedObject("ports");
+  JsonObject ports = json["ports"].to<JsonObject>();
   ports["title"] = "Port Configuration";
   ports["description"] = "Add configuration for each port in use on your device. The 1-based index specifies which port you wish to configure. Inverting a port swaps the 'active' state. Disabling a port stops any events being emitted.";
   ports["type"] = "array";
   
-  JsonObject items = ports.createNestedObject("items");
+  JsonObject items = ports["items"].to<JsonObject>();
   items["type"] = "object";
 
-  JsonObject properties = items.createNestedObject("properties");
+  JsonObject properties = items["properties"].to<JsonObject>();
 
-  JsonObject port = properties.createNestedObject("port");
+  JsonObject port = properties["port"].to<JsonObject>();
   port["title"] = "Port";
   port["type"] = "integer";
   port["minimum"] = 1;
   port["maximum"] = getMaxPort();
 
-  JsonObject invert = properties.createNestedObject("invert");
+  JsonObject invert = properties["invert"].to<JsonObject>();
   invert["title"] = "Invert";
   invert["type"] = "boolean";
 
-  JsonObject disabled = properties.createNestedObject("disabled");
+  JsonObject disabled = properties["disabled"].to<JsonObject>();
   disabled["title"] = "Disabled";
   disabled["type"] = "boolean";
 
-  JsonArray required = items.createNestedArray("required");
+  JsonArray required = items["required"].to<JsonArray>();
   required.add("port");
 
   // Add any Home Assistant config
@@ -274,9 +274,9 @@ void jsonConfig(JsonVariant json)
 void setCommandSchema()
 {
   // Define our command schema
-  StaticJsonDocument<1024> json;
+  JsonDocument json;
 
-  JsonObject queryInputs = json.createNestedObject("queryInputs");
+  JsonObject queryInputs = json["queryInputs"].to<JsonObject>();
   queryInputs["title"] = "Query Inputs";
   queryInputs["description"] = "Query and publish the state of all bi-stable inputs.";
   queryInputs["type"] = "boolean";
@@ -298,7 +298,7 @@ void publishEvent(uint8_t port, uint8_t state)
   char eventType[7];
   getEventType(eventType, state);
 
-  StaticJsonDocument<128> json;
+  JsonDocument json;
   json["port"] = port;
   json["type"] = "security";
   json["event"] = eventType;
@@ -335,7 +335,7 @@ void publishHassDiscovery(uint8_t mcp)
       continue;
 
     // JSON config payload (empty if the port is disabled, to clear any existing config)
-    DynamicJsonDocument json(1024);
+    JsonDocument json;
 
     sprintf_P(portId, PSTR("port_%d"), port);
 
