@@ -20,6 +20,10 @@
 #include <OXRS_Rack32.h>              // Rack32 support
 #include "logo.h"                     // Embedded maker logo
 OXRS_Rack32 oxrs(FW_LOGO);
+#elif defined(OXRS_BLACK)
+#include <OXRS_Black.h>               // Black support
+#include "logo.h"                     // Embedded maker logo
+OXRS_Black oxrs(FW_LOGO);
 #elif defined(OXRS_ROOM8266)
 #include <OXRS_Room8266.h>            // Room8266 support
 OXRS_Room8266 oxrs;
@@ -125,7 +129,7 @@ void setPortInvert(uint8_t port, int invert)
   for (uint8_t pin = fromPin; pin < fromPin + 4; pin++)
   {
     // Configure the display
-    #if defined(OXRS_RACK32)
+    #if defined(OXRS_LCD_ENABLE)
     oxrs.getLCD()->setPinInvert(mcp, pin, invert);
     #endif
 
@@ -143,7 +147,7 @@ void setPortDisabled(uint8_t port, int disabled)
   for (uint8_t pin = fromPin; pin < fromPin + 4; pin++)
   {
     // Configure the display
-    #if defined(OXRS_RACK32)
+    #if defined(OXRS_LCD_ENABLE)
     oxrs.getLCD()->setPinDisabled(mcp, pin, disabled);
     #endif
 
@@ -155,7 +159,7 @@ void setPortDisabled(uint8_t port, int disabled)
 void setDisplay()
 {
   // Display ports based on what MCPs were detected
-  #if defined(OXRS_RACK32)
+  #if defined(OXRS_LCD_ENABLE)
   oxrs.getLCD()->drawPorts(PORT_LAYOUT_INPUT_AUTO, g_mcps_found);
   #endif
 
@@ -167,7 +171,7 @@ void setDisplay()
 
     for (uint8_t pin = 0; pin < MCP_PIN_COUNT; pin++)
     {
-      #if defined(OXRS_RACK32)
+      #if defined(OXRS_LCD_ENABLE)
       oxrs.getLCD()->setPinType(mcp, pin, PIN_TYPE_SECURITY);
       #endif
     }
@@ -460,7 +464,7 @@ void loop()
     uint16_t io_value = mcp23017[mcp].readGPIOAB();
 
     // Show port animations
-    #if defined(OXRS_RACK32)
+    #if defined(OXRS_LCD_ENABLE)
     oxrs.getLCD()->process(mcp, io_value);
     #endif
 
